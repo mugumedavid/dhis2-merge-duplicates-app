@@ -33,7 +33,7 @@ function StageRow({ name, count }) {
 }
 
 const EnrollmentPanel = forwardRef(function EnrollmentPanel(
-    { side, config, otherPanel, onMerge, merging, mergeBlocked, onDataChange },
+    { side, config, otherPanel, onMerge, merging, mergeBlocked, isWinner, onDataChange },
     ref
 ) {
     const engine = useDataEngine()
@@ -126,7 +126,7 @@ const EnrollmentPanel = forwardRef(function EnrollmentPanel(
     const attributeLabel = config.attributeLabel || 'Search value'
 
     return (
-        <div style={styles.panel}>
+        <div style={{ ...styles.panel, ...(isWinner ? styles.panelWinner : {}) }}>
             <div style={styles.searchRow}>
                 <Input
                     value={searchValue}
@@ -141,6 +141,12 @@ const EnrollmentPanel = forwardRef(function EnrollmentPanel(
                 </Button>
             </div>
 
+            {data && otherPanel?.data && (
+                <div style={styles.roleLabel}>
+                    {side === 'left' ? 'Keep this record' : 'Or maybe keep this one?'}
+                </div>
+            )}
+
             {canMerge && (
                 <Button
                     primary
@@ -150,6 +156,12 @@ const EnrollmentPanel = forwardRef(function EnrollmentPanel(
                 >
                     {merging ? <CircularLoader small /> : 'Merge into this'}
                 </Button>
+            )}
+
+            {!data && !error && !loading && (
+                <p style={styles.emptyState}>
+                    Every duplicate you find is a person whose story was being told twice. Search to begin.
+                </p>
             )}
 
             {error && (
@@ -203,6 +215,11 @@ const styles = {
         border: '1px solid #e0e0e0',
         borderRadius: 4,
         minWidth: 0,
+        transition: 'border-color 0.3s, box-shadow 0.3s',
+    },
+    panelWinner: {
+        border: '2px solid #2e7d32',
+        boxShadow: '0 0 0 3px rgba(46,125,50,0.15)',
     },
     searchRow: {
         display: 'flex',
@@ -236,6 +253,22 @@ const styles = {
     teaValue: {
         padding: '4px 8px',
         borderBottom: '1px solid #f0f0f0',
+    },
+    emptyState: {
+        marginTop: 24,
+        color: '#aaa',
+        fontSize: 13,
+        fontStyle: 'italic',
+        lineHeight: 1.6,
+        textAlign: 'center',
+    },
+    roleLabel: {
+        fontSize: 11,
+        fontWeight: 600,
+        color: '#2e7d32',
+        textTransform: 'uppercase',
+        letterSpacing: '0.6px',
+        marginBottom: 6,
     },
     sectionHeader: {
         fontWeight: 'bold',

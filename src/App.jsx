@@ -6,6 +6,11 @@ import {
     AlertBar,
     AlertStack,
     Button,
+    Modal,
+    ModalTitle,
+    ModalContent,
+    ModalActions,
+    ButtonStrip,
 } from '@dhis2/ui'
 import ConfigPanel from './components/ConfigPanel'
 import EnrollmentPanel from './components/EnrollmentPanel'
@@ -27,6 +32,8 @@ export default function App() {
     const [leftData, setLeftData] = useState(null)
     const [rightData, setRightData] = useState(null)
     const [merging, setMerging] = useState(false)
+    const [mergeWinner, setMergeWinner] = useState(null) // 'left' | 'right' | null
+    const [pendingMerge, setPendingMerge] = useState(null) // keepSide while modal is open
     const [alerts, setAlerts] = useState([])
     const [config, setConfig] = useState(null)         // null = not yet loaded
     const [configLoaded, setConfigLoaded] = useState(false)
@@ -54,33 +61,35 @@ export default function App() {
         setTimeout(() => setAlerts(prev => prev.filter(a => a.id !== id)), 6000)
     }
 
-    async function handleMerge(keepSide) {
+    function handleMerge(keepSide) {
         const target = keepSide === 'left' ? leftData : rightData
         const source = keepSide === 'left' ? rightData : leftData
         if (!target || !source) return
-
         if (target.teiUid === source.teiUid) {
             addAlert('Both panels show the same record. Search for two different records to merge.', false)
             return
         }
+        setPendingMerge(keepSide)
+    }
 
-        const sourceSideLabel = keepSide === 'left' ? 'right' : 'left'
-        const confirmed = window.confirm(
-            `This will move all events from the ${sourceSideLabel} record into the ${keepSide} record, ` +
-            `then permanently delete the ${sourceSideLabel} enrollment and TEI.\n\nThis cannot be undone. Proceed?`
-        )
-        if (!confirmed) return
+    async function executeMerge() {
+        const keepSide = pendingMerge
+        setPendingMerge(null)
+        const target = keepSide === 'left' ? leftData : rightData
+        const source = keepSide === 'left' ? rightData : leftData
 
         setMerging(true)
         try {
             const sourceIdentifier = source.attributes.find(a => a.attribute === config.attributeUid)?.value || source.teiUid
-            await mergeEnrollments(
+            const eventsTransferred = await mergeEnrollments(
                 engine,
                 target.enrollmentUid, source.enrollmentUid,
                 source.teiUid, config.programUid,
                 sourceIdentifier, currentUser.username
             )
-            addAlert('Merge complete. The duplicate record has been deleted.')
+            setMergeWinner(keepSide)
+            const eventLabel = eventsTransferred === 1 ? '1 event' : `${eventsTransferred} events`
+            addAlert(`One record to rule them all. Merge complete — ${eventLabel} transferred.`)
             if (keepSide === 'left') {
                 setRightData(null)
                 rightRef.current?.reset()
@@ -188,7 +197,8 @@ export default function App() {
                             onMerge={handleMerge}
                             merging={merging}
                             mergeBlocked={missingAuthorities.length > 0}
-                            onDataChange={setLeftData}
+                            isWinner={mergeWinner === 'left'}
+                            onDataChange={d => { setLeftData(d); if (d) setMergeWinner(null) }}
                         />
                         <div style={styles.divider} />
                         <EnrollmentPanel
@@ -199,10 +209,40 @@ export default function App() {
                             onMerge={handleMerge}
                             merging={merging}
                             mergeBlocked={missingAuthorities.length > 0}
-                            onDataChange={setRightData}
+                            isWinner={mergeWinner === 'right'}
+                            onDataChange={d => { setRightData(d); if (d) setMergeWinner(null) }}
                         />
                     </div>
                 </>
+            )}
+
+            <div style={styles.footer}>
+                Clean data. Better decisions. Healthier outcomes.
+            </div>
+
+            {pendingMerge && (
+                <Modal onClose={() => setPendingMerge(null)}>
+                    <ModalTitle>Confirm Merge</ModalTitle>
+                    <ModalContent>
+                        <p style={{ margin: '0 0 12px' }}>
+                            You are about to make this record the single source of truth.
+                        </p>
+                        <p style={{ margin: '0 0 12px' }}>
+                            All events from the <strong>{pendingMerge === 'left' ? 'right' : 'left'}</strong> record
+                            will be moved into the <strong>{pendingMerge}</strong> record, and the duplicate
+                            will be permanently deleted.
+                        </p>
+                        <p style={{ margin: 0, color: '#b71c1c', fontWeight: 500 }}>
+                            This cannot be undone.
+                        </p>
+                    </ModalContent>
+                    <ModalActions>
+                        <ButtonStrip end>
+                            <Button onClick={() => setPendingMerge(null)}>Cancel</Button>
+                            <Button destructive onClick={executeMerge}>Merge</Button>
+                        </ButtonStrip>
+                    </ModalActions>
+                </Modal>
             )}
 
             <AlertStack>
@@ -269,5 +309,12 @@ const styles = {
         alignItems: 'center',
         height: '60vh',
         padding: 32,
+    },
+    footer: {
+        marginTop: 40,
+        textAlign: 'center',
+        fontSize: 11,
+        color: '#bbb',
+        letterSpacing: '0.5px',
     },
 }

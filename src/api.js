@@ -167,6 +167,15 @@ export async function getProgramStages(engine, programUid) {
 }
 
 export async function mergeEnrollments(engine, targetEnrollmentUid, sourceEnrollmentUid, sourceTeiUid, programUid, sourceIdentifier, username) {
+    // Fetch target enrollment details upfront — needed for the audit note UPDATE payload
+    const targetEnrollmentResult = await engine.query({
+        enrollment: {
+            resource: `tracker/enrollments/${targetEnrollmentUid}`,
+            params: { fields: 'enrollment,program,orgUnit,trackedEntity,enrolledAt,status' },
+        },
+    })
+    const targetEnrollment = targetEnrollmentResult.enrollment
+
     const events = await getEnrollmentEvents(engine, sourceEnrollmentUid, programUid, sourceTeiUid)
     const today = new Date().toISOString().slice(0, 10)
 
@@ -251,6 +260,8 @@ export async function mergeEnrollments(engine, targetEnrollmentUid, sourceEnroll
         )
     }
 
+    const eventsTransferred = events.length
+
     // Leave a note on the winner enrollment recording what was merged in.
     // Non-fatal: the merge is complete at this point; a failed note is just cosmetic.
     try {
@@ -260,7 +271,12 @@ export async function mergeEnrollments(engine, targetEnrollmentUid, sourceEnroll
             params: { importStrategy: 'UPDATE', async: false },
             data: {
                 enrollments: [{
-                    enrollment: targetEnrollmentUid,
+                    enrollment: targetEnrollment.enrollment,
+                    program: targetEnrollment.program,
+                    orgUnit: targetEnrollment.orgUnit,
+                    trackedEntity: targetEnrollment.trackedEntity,
+                    enrolledAt: targetEnrollment.enrolledAt,
+                    status: targetEnrollment.status,
                     notes: [{
                         value: `Merged from identifier ${sourceIdentifier} (TEI: ${sourceTeiUid}) on ${today} by ${username}.`,
                     }],
@@ -270,16 +286,19 @@ export async function mergeEnrollments(engine, targetEnrollmentUid, sourceEnroll
     } catch {
         // Merge succeeded; audit note could not be written but data is intact
     }
+
+    return eventsTransferred
 }
 
 // Authorities required to complete every step of a merge
 const REQUIRED_MERGE_AUTHORITIES = [
-    { code: 'F_ENROLLMENT_CASCADE_DELETE',      label: 'Delete enrollment and associated events' },
-    { code: 'F_TRACKED_ENTITY_INSTANCE_DELETE', label: 'Delete tracked entity instance and associated enrollments and events' },
+    { code: 'F_ENROLLMENT_CASCADE_DELETE', label: 'Delete enrollment and associated events' },
+    { code: 'F_TEI_CASCADE_DELETE',        label: 'Delete tracked entity instance and associated enrollments and events' },
 ]
 
 export function isSuperuser(currentUser) {
-    return (currentUser?.authorities || []).includes('ALL')
+    const auth = new Set(currentUser?.authorities || [])
+    return auth.has('ALL') || auth.has('F_SYSTEM_SETTING')
 }
 
 // Returns an array of { code, label } for any required authorities the user is missing
@@ -291,6 +310,6 @@ export function getMissingMergeAuthorities(currentUser) {
 
 export function userHasAccess(currentUser, accessRoleUid) {
     if (isSuperuser(currentUser)) return true
-    if (!accessRoleUid) return false
+    if (!accessRoleUid) return true  // no role restriction configured — open to all authenticated users
     return (currentUser?.userRoles || []).some(r => r.id === accessRoleUid)
 }
