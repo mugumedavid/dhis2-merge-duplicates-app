@@ -1,7 +1,17 @@
 {
   "name": "merge-duplicates",
   "version": "1.0.0",
-  "description": "Merge duplicate tracker enrollments by UIC",
+  "description": "Identify and merge duplicate tracker enrollments across any DHIS2 tracker program.",
+  "author": {
+    "name": "David Mugume",
+    "email": "mugumedavid@gmail.com",
+    "url": "https://www.linkedin.com/in/davidmugume/"
+  },
+  "license": "BSD-2-Clause",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mugumedavid/dhis2-merge-duplicates-app"
+  },
   "scripts": {
     "start": "d2-app-scripts start",
     "build": "d2-app-scripts build",

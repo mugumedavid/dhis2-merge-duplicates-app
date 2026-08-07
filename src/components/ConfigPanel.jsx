@@ -14,6 +14,7 @@ import {
     getUserRoles,
     saveConfig,
     isSuperuser,
+    TEI_ID_OPTION,
 } from '../api'
 
 export default function ConfigPanel({ config, onSave, currentUser }) {
@@ -56,15 +57,17 @@ export default function ConfigPanel({ config, onSave, currentUser }) {
             return
         }
         getProgramAttributes(engine, programUid).then(attrs => {
-            setAttributes(attrs)
+            const all = [TEI_ID_OPTION, ...attrs]
+            setAttributes(all)
             // Keep existing selection if still valid, else clear
-            if (!attrs.find(a => a.id === attributeUid)) setAttributeUid('')
+            if (!all.find(a => a.id === attributeUid)) setAttributeUid('')
         })
     }, [programUid]) // eslint-disable-line react-hooks/exhaustive-deps
 
     async function handleSave() {
         setSaving(true)
-        const next = { programUid, attributeUid, accessRoleUid }
+        const attributeLabel = attributes.find(a => a.id === attributeUid)?.displayName || ''
+        const next = { programUid, attributeUid, attributeLabel, accessRoleUid }
         try {
             await saveConfig(engine, next)
             onSave(next)

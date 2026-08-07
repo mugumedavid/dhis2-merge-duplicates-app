@@ -7,7 +7,7 @@ import {
     NoticeBox,
     Tag,
 } from '@dhis2/ui'
-import { searchByAttribute, getEnrollment, getEnrollmentEvents, getProgramStages } from '../api'
+import { searchByAttribute, getEnrollment, getEnrollmentEvents, getProgramStages, TEI_ID_SENTINEL } from '../api'
 
 function TEARow({ label, value, otherValue }) {
     const different = value !== undefined && value !== null && value !== '' && value !== otherValue
@@ -33,7 +33,7 @@ function StageRow({ name, count }) {
 }
 
 const EnrollmentPanel = forwardRef(function EnrollmentPanel(
-    { side, config, otherPanel, onMerge, merging, onDataChange },
+    { side, config, otherPanel, onMerge, merging, mergeBlocked, onDataChange },
     ref
 ) {
     const engine = useDataEngine()
@@ -52,7 +52,8 @@ const EnrollmentPanel = forwardRef(function EnrollmentPanel(
     }))
 
     async function handleSearch() {
-        const val = searchValue.trim().toUpperCase()
+        const isTeiSearch = config.attributeUid === TEI_ID_SENTINEL
+        const val = isTeiSearch ? searchValue.trim() : searchValue.trim().toUpperCase()
         if (!val) return
         setLoading(true)
         setError(null)
@@ -82,13 +83,14 @@ const EnrollmentPanel = forwardRef(function EnrollmentPanel(
             }
 
             const [events, stages] = await Promise.all([
-                getEnrollmentEvents(engine, enrollment.enrollment),
+                getEnrollmentEvents(engine, enrollment.enrollment, config.programUid, tei.trackedEntity),
                 getProgramStages(engine, config.programUid),
             ])
 
-            // Count events per stage
+            // Count only real events (exclude SCHEDULE — those are empty auto-created placeholders)
             const stageCounts = {}
             for (const ev of events) {
+                if (ev.status === 'SCHEDULE') continue
                 stageCounts[ev.programStage] = (stageCounts[ev.programStage] || 0) + 1
             }
 
@@ -115,7 +117,7 @@ const EnrollmentPanel = forwardRef(function EnrollmentPanel(
         setLoading(false)
     }
 
-    const canMerge = data && otherPanel?.data && !merging
+    const canMerge = data && otherPanel?.data && !merging && !mergeBlocked
     const otherAttrs = {}
     for (const a of (otherPanel?.data?.attributes || [])) {
         otherAttrs[a.attribute] = a.value
@@ -160,7 +162,7 @@ const EnrollmentPanel = forwardRef(function EnrollmentPanel(
                 <>
                     <div style={styles.meta}>
                         <strong>TEI:</strong> {data.teiUid}<br />
-                        <strong>Org unit:</strong> {data.orgUnitName}<br />
+                        <strong>Enrolling org unit:</strong> {data.orgUnitName}<br />
                         <strong>Enrolled:</strong> {data.enrolledAt?.slice(0, 10)}
                     </div>
 

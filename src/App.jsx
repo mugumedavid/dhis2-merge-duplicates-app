@@ -9,12 +9,12 @@ import {
 } from '@dhis2/ui'
 import ConfigPanel from './components/ConfigPanel'
 import EnrollmentPanel from './components/EnrollmentPanel'
-import { userHasAccess, loadConfig, mergeEnrollments } from './api'
+import { userHasAccess, loadConfig, mergeEnrollments, getProgramAttributes, getMissingMergeAuthorities } from './api'
 
 const currentUserQuery = {
     me: {
         resource: 'me',
-        params: { fields: 'id,displayName,userRoles[id,name],authorities' },
+        params: { fields: 'id,username,displayName,userRoles[id,name],authorities' },
     },
 }
 
@@ -35,10 +35,15 @@ export default function App() {
     // Load config from dataStore once the current user is available
     React.useEffect(() => {
         if (!data?.me) return
-        loadConfig(engine).then(cfg => {
+        loadConfig(engine).then(async cfg => {
+            // If attributeLabel is missing (saved before that field was added), resolve it now
+            if (cfg?.programUid && cfg?.attributeUid && !cfg?.attributeLabel) {
+                const attrs = await getProgramAttributes(engine, cfg.programUid)
+                const match = attrs.find(a => a.id === cfg.attributeUid)
+                if (match) cfg.attributeLabel = match.displayName
+            }
             setConfig(cfg || {})
             setConfigLoaded(true)
-            // Show settings panel if not yet configured
             if (!cfg?.programUid || !cfg?.attributeUid) setShowConfig(true)
         })
     }, [data]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -54,6 +59,11 @@ export default function App() {
         const source = keepSide === 'left' ? rightData : leftData
         if (!target || !source) return
 
+        if (target.teiUid === source.teiUid) {
+            addAlert('Both panels show the same record. Search for two different records to merge.', false)
+            return
+        }
+
         const sourceSideLabel = keepSide === 'left' ? 'right' : 'left'
         const confirmed = window.confirm(
             `This will move all events from the ${sourceSideLabel} record into the ${keepSide} record, ` +
@@ -63,7 +73,13 @@ export default function App() {
 
         setMerging(true)
         try {
-            await mergeEnrollments(engine, target.enrollmentUid, source.enrollmentUid, source.teiUid)
+            const sourceIdentifier = source.attributes.find(a => a.attribute === config.attributeUid)?.value || source.teiUid
+            await mergeEnrollments(
+                engine,
+                target.enrollmentUid, source.enrollmentUid,
+                source.teiUid, config.programUid,
+                sourceIdentifier, currentUser.username
+            )
             addAlert('Merge complete. The duplicate record has been deleted.')
             if (keepSide === 'left') {
                 setRightData(null)
@@ -88,6 +104,7 @@ export default function App() {
 
     const currentUser = data.me
     const hasAccess = userHasAccess(currentUser, config?.accessRoleUid)
+    const missingAuthorities = getMissingMergeAuthorities(currentUser)
 
     if (!hasAccess) {
         return (
@@ -104,7 +121,17 @@ export default function App() {
     return (
         <div style={styles.wrapper}>
             <div style={styles.header}>
-                <h2 style={styles.title}>Merge Duplicate Records</h2>
+                <div style={styles.titleGroup}>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" style={styles.logo}>
+                        <rect width="48" height="48" rx="8" fill="#1565C0"/>
+                        <circle cx="11" cy="14" r="4.5" fill="white"/>
+                        <circle cx="11" cy="34" r="4.5" fill="white"/>
+                        <path d="M15.5 14 L28 24 L15.5 34" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        <line x1="28" y1="24" x2="32.5" y2="24" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+                        <circle cx="37" cy="24" r="4.5" fill="white"/>
+                    </svg>
+                    <h2 style={styles.title}>Merge Duplicate Tracker Records</h2>
+                </div>
                 <Button small onClick={() => setShowConfig(v => !v)}>
                     {showConfig ? 'Hide settings' : 'Settings'}
                 </Button>
@@ -136,6 +163,22 @@ export default function App() {
                         Search for two records to compare their enrollments. Rows highlighted in yellow differ between the two.
                         Click <em>Merge into this</em> to keep that record and move all events from the other into it.
                     </p>
+
+                    {missingAuthorities.length > 0 && (
+                        <NoticeBox
+                            warning
+                            title="Insufficient permissions to merge"
+                            style={{ marginBottom: 24 }}
+                        >
+                            Your account is missing the following authorities. Contact your system administrator to have them added to your role:
+                            <ul style={{ margin: '8px 0 0 0', paddingLeft: 20 }}>
+                                {missingAuthorities.map(a => (
+                                    <li key={a.code}>{a.label}</li>
+                                ))}
+                            </ul>
+                        </NoticeBox>
+                    )}
+
                     <div style={styles.panels}>
                         <EnrollmentPanel
                             ref={leftRef}
@@ -144,6 +187,7 @@ export default function App() {
                             otherPanel={{ data: rightData }}
                             onMerge={handleMerge}
                             merging={merging}
+                            mergeBlocked={missingAuthorities.length > 0}
                             onDataChange={setLeftData}
                         />
                         <div style={styles.divider} />
@@ -154,6 +198,7 @@ export default function App() {
                             otherPanel={{ data: leftData }}
                             onMerge={handleMerge}
                             merging={merging}
+                            mergeBlocked={missingAuthorities.length > 0}
                             onDataChange={setRightData}
                         />
                     </div>
@@ -187,6 +232,16 @@ const styles = {
         justifyContent: 'space-between',
         alignItems: 'center',
         marginBottom: 16,
+    },
+    titleGroup: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+    },
+    logo: {
+        width: 36,
+        height: 36,
+        flexShrink: 0,
     },
     title: {
         margin: 0,
