@@ -188,6 +188,12 @@ export default function App() {
                         </NoticeBox>
                     )}
 
+                    {merging && (
+                        <NoticeBox title="Bringing order to the data. Please hold." style={{ marginBottom: 16 }}>
+                            Transferring events and removing the duplicate. Do not close this tab.
+                        </NoticeBox>
+                    )}
+
                     <div style={styles.panels}>
                         <EnrollmentPanel
                             ref={leftRef}
