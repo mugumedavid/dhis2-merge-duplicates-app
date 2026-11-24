@@ -88,7 +88,9 @@ export async function searchByAttribute(engine, programUid, attributeUid, value)
         const result = await engine.query({
             tei: {
                 resource: `tracker/trackedEntities/${value}`,
-                params: { fields: 'trackedEntity,attributes[attribute,displayName,value]' },
+                // DHIS2 2.40 rejects nested field syntax (attributes[...]) on the
+                // single-TEI endpoint with a 400; request the full attributes object instead.
+                params: { fields: 'trackedEntity,attributes' },
             },
         })
         return result.tei?.trackedEntity ? [result.tei] : []
@@ -118,6 +120,10 @@ export async function getEnrollment(engine, teiUid, programUid) {
                 trackedEntity: teiUid,
                 program: programUid,
                 fields: 'enrollment,enrolledAt,status,orgUnit',
+                // DHIS2 2.40 requires an org unit scope on the enrollments list
+                // endpoint; without ouMode it returns 409 "organisation unit must
+                // be specified". ALL searches across the whole hierarchy.
+                ouMode: 'ALL',
                 paging: false,
             },
         },
@@ -147,6 +153,9 @@ export async function getEnrollmentEvents(engine, enrollmentUid, programUid, tei
                 trackedEntity: teiUid,
                 program: programUid,
                 fields: 'event,program,programStage,orgUnit,occurredAt,completedAt,completedBy,status,followUp,attributeOptionCombo,notes,dataValues,enrollment',
+                // DHIS2 2.40 requires an org unit scope on the events list endpoint
+                // (409 "organisation unit must be specified" without it).
+                ouMode: 'ALL',
                 pageSize: 1000,
             },
         },
