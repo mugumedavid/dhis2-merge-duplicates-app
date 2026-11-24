@@ -10,7 +10,7 @@ The app is fully generic: it works with any DHIS2 tracker program. Program, sear
 
 ## Requirements
 
-- DHIS2 2.40 or later
+- DHIS2 2.40 to 2.43
 - A tracker program (WITH_REGISTRATION)
 - The merging user must hold the following DHIS2 authorities:
   - Delete enrollment and associated events (`F_ENROLLMENT_CASCADE_DELETE`)
@@ -94,6 +94,10 @@ npm start
 ```
 
 The dev server proxies to a DHIS2 instance. Set the target in `d2.config.js` or via the `DHIS2_BASE_URL` environment variable.
+
+## AI use
+
+Parts of this project, including portions of the code and this documentation, were produced with the help of AI coding assistants. All AI-assisted output was reviewed and tested by the maintainer before release.
 
 ## License
 

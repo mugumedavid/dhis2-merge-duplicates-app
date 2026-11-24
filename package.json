@@ -15,15 +15,16 @@
   "scripts": {
     "start": "d2-app-scripts start",
     "build": "d2-app-scripts build",
-    "pack": "d2-app-scripts pack"
+    "pack": "d2-app-scripts pack",
+    "test": "d2-app-scripts test"
   },
   "dependencies": {
-    "@dhis2/app-runtime": "^3.10.0",
-    "@dhis2/ui": "^9.0.0",
+    "@dhis2/app-runtime": "^3.14.3",
+    "@dhis2/ui": "^10.9.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@dhis2/cli-app-scripts": "^12.6.3"
+    "@dhis2/cli-app-scripts": "12.11.3"
   }
 }

@@ -179,6 +179,13 @@ export async function mergeEnrollments(engine, targetEnrollmentUid, sourceEnroll
     const events = await getEnrollmentEvents(engine, sourceEnrollmentUid, programUid, sourceTeiUid)
     const today = new Date().toISOString().slice(0, 10)
 
+    // Skip auto-generated empty SCHEDULE events (DHIS2 creates these on enrollment
+    // for each stage with autoGenerateEvent=true; they hold no data and should not
+    // be transferred — copying them causes E1050 and adds no value).
+    const eventsToTransfer = events.filter(ev =>
+        !(ev.status === 'SCHEDULE' && (!ev.dataValues || ev.dataValues.length === 0))
+    )
+
     if (events.length > 0) {
         const transferNote = {
             value: `Transferred from enrollment ${sourceEnrollmentUid} (identifier: ${sourceIdentifier}) during merge on ${today} by ${username}.`,
@@ -188,7 +195,8 @@ export async function mergeEnrollments(engine, targetEnrollmentUid, sourceEnroll
         // Workaround: create new copies under the target enrollment, then delete the originals.
         // Drop system-managed fields; keep everything else (occurredAt, completedAt,
         // completedBy, orgUnit, status, attributeOptionCombo, notes, dataValues, followUp)
-        const copies = events.map(({
+
+        const copies = eventsToTransfer.map(({
             event, enrollment, trackedEntity,
             createdAt, updatedAt, createdBy, updatedBy, deleted,
             ...rest
@@ -198,20 +206,23 @@ export async function mergeEnrollments(engine, targetEnrollmentUid, sourceEnroll
             notes: [...(rest.notes || []), transferNote],
         }))
 
-        try {
-            await engine.mutate({
-                type: 'create',
-                resource: 'tracker',
-                params: { importStrategy: 'CREATE', async: false },
-                data: { events: copies },
-            })
-        } catch (e) {
-            throw new Error(
-                `Could not copy events to the target enrollment. No data has been changed. ` +
-                `Fix: ${e.message}`
-            )
+        if (copies.length > 0) {
+            try {
+                await engine.mutate({
+                    type: 'create',
+                    resource: 'tracker',
+                    params: { importStrategy: 'CREATE', async: false },
+                    data: { events: copies },
+                })
+            } catch (e) {
+                throw new Error(
+                    `Could not copy events to the target enrollment. No data has been changed. ` +
+                    `Fix: ${e.message}`
+                )
+            }
         }
 
+        // Delete ALL source events (including empty SCHEDULE placeholders skipped above)
         try {
             await engine.mutate({
                 type: 'create',
@@ -260,7 +271,7 @@ export async function mergeEnrollments(engine, targetEnrollmentUid, sourceEnroll
         )
     }
 
-    const eventsTransferred = events.length
+    const eventsTransferred = eventsToTransfer.length
 
     // Leave a note on the winner enrollment recording what was merged in.
     // Non-fatal: the merge is complete at this point; a failed note is just cosmetic.
